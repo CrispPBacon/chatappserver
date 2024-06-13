@@ -33,7 +33,7 @@ app.use([
   express.json(),
   express.urlencoded({ extended: true }),
 ]);
-app.use(cors({ origin: "http://localhost:5173" }));
+app.use(cors({ origin: "https://chatappserver-rwzn.onrender.com" }));
 app.use(
   session({
     secret: "74679e8244cf2b2869902f183ce3d864ba0c63e02585a21f4e10c5fc064eee05",
