@@ -3,12 +3,12 @@ const { Schema } = mongoose;
 const ObjectId = mongoose.Types.ObjectId;
 
 async function connect() {
-  // const url =
-  //   "mongodb+srv://crisppbacon:Blacks132@cluster0.rarepeo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-  const url = "mongodb://localhost:27017/bestdb";
-  const dbName = "chatapp";
+  const url =
+    "mongodb+srv://crisppbacon:Blacks132@cluster0.rarepeo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+  // const url = "mongodb://localhost:27017/bestdb";
+  const dbName = { dbName: "chatapp" };
   try {
-    await mongoose.connect(url);
+    await mongoose.connect(url, dbName);
     console.log(`MongoDB Connected!`);
   } catch (err) {
     console.error("Connection Error", err);
