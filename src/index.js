@@ -6,6 +6,8 @@ const cors = require("cors");
 const { Server } = require("socket.io");
 const fs = require("fs");
 
+const MongoStore = require("connect-mongo")(session);
+
 const { generateInboxObject } = require("./config/functions");
 const {
   auth,
@@ -19,7 +21,7 @@ const {
 } = require("./controllers");
 
 const { upload } = require("./config/multerConfig");
-const { usersCollection, msgCollection, ObjectId } = require("./config/db");
+const { usersCollection, msgCollection, ObjectId, db } = require("./config/db");
 
 const app = express();
 const server = http.createServer(app);
@@ -41,6 +43,7 @@ app.use(
     secret: "74679e8244cf2b2869902f183ce3d864ba0c63e02585a21f4e10c5fc064eee05",
     resave: false,
     saveUninitialized: false,
+    store: new MongoStore({ mongooseConnection: db }),
   })
 );
 
