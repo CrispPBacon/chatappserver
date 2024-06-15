@@ -14,6 +14,8 @@ const {
   uploadFile,
   downloadFile,
   fetchImages,
+  analytics,
+  checkLogin,
 } = require("./controllers");
 
 const { upload } = require("./config/multerConfig");
@@ -50,13 +52,23 @@ server.listen(process.env.PORT || 3500, "0.0.0.0", () =>
 
 app.post("/api/auth", auth);
 app.post("/api/rooms", rooms);
-app.post("/api/users", users);
-app.post("/api/upload/users/:id", upload.single("file"), uploadFile);
-app.post("/api/upload/chatrooms/:id", upload.single("file"), uploadFile);
+app.post("/api/users", checkLogin, users);
+app.post(
+  "/api/upload/users/:id",
+  checkLogin,
+  upload.single("file"),
+  uploadFile
+);
+app.post(
+  "/api/upload/chatrooms/:id",
+  checkLogin,
+  upload.single("file"),
+  uploadFile
+);
 
-app.post("/api/download/:id/:filename", downloadFile);
-// app.get("/api/download/:id/:filename", downloadFile);
-app.post("/api/fetch_images/:id", fetchImages);
+app.post("/api/analytics", checkLogin, analytics);
+app.post("/api/download/:id/:filename", checkLogin, downloadFile);
+app.post("/api/fetch_images/:id", checkLogin, fetchImages);
 
 // SOCKET IO
 

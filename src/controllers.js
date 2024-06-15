@@ -8,6 +8,21 @@ const {
 const path = require("path");
 const fs = require("fs");
 
+const months = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "July",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
 String.prototype.toTitleCase = function () {
   return this.toLowerCase()
     .split(" ")
@@ -55,6 +70,8 @@ const auth = async (req, res) => {
       username: data.username,
       fullname: data.fullname.toTitleCase(),
       email: data.email,
+      role: data.role,
+      perms: data.perms,
     };
     req.session.userdata = userdata;
     return res.json(req.session.userdata);
@@ -79,6 +96,10 @@ const auth = async (req, res) => {
       username: uid.toLowerCase(),
       email: email.toLowerCase(),
       password: pwd,
+      isOnline: false,
+      created_at: new Date(),
+      role: "user",
+      perms: { sendChat: true, banned: false },
     });
 
     try {
@@ -233,6 +254,12 @@ const rooms = async (req, res) => {
 
 const users = async (req, res) => {
   const search = req.body.search;
+  const addFriend = req.body.addFriend;
+  const getUsers = req.body.getUsers;
+  const muteUser = req.body.muteUser;
+  const unmuteUser = req.body.unmuteUser;
+  const ban = req.body.ban;
+  const unban = req.body.unban;
 
   if (search) {
     if (search.searchValue <= 0) {
@@ -257,8 +284,130 @@ const users = async (req, res) => {
             return user;
           })
         : [];
-    console.log(data);
+    // console.log(data);
     return res.json(data);
+  }
+  if (addFriend) {
+    const { recipient_id, sender_id } = addFriend;
+    const query = {
+      $or: [
+        {
+          $and: [
+            { user_id1: new ObjectId(sender_id) },
+            { user_id2: new ObjectId(recipient_id) },
+          ],
+        },
+        {
+          $and: [
+            { user_id1: new ObjectId(recipient_id) },
+            { user_id2: new ObjectId(sender_id) },
+          ],
+        },
+      ],
+    };
+    const data = await friendCollection.findOne(query);
+    if (data) {
+      if (data.status == "ACCEPTED") {
+        return res.json({ error: "You are already friends with this person" });
+      }
+      if (data.status == "PENDING") {
+        return res.json({ error: "You have already sent a friend request" });
+      }
+      await friendCollection.updateOne(query, {
+        $set: { status: "PENDING" },
+      });
+      console.log("Updated friend status");
+      return res.json({ success: "You have sent a friend request!" });
+    }
+
+    const friendRequest = new friendCollection({
+      user_id1: new ObjectId(sender_id),
+      user_id2: new ObjectId(recipient_id),
+      status: "PENDING",
+      timestamp: new Date(),
+    });
+
+    try {
+      friendRequest.save();
+      return res.json({ success: "You have sent a friend request!" });
+    } catch (error) {
+      console.log("Error while sending friend request", error);
+      return res.status(500).json({ error: "Internal server error." });
+    }
+  }
+
+  if (getUsers) {
+    const data = await usersCollection.find({});
+    return res.json(data);
+  }
+
+  if (muteUser) {
+    const user_id = muteUser.user_id;
+
+    const data = await usersCollection.findOneAndUpdate(
+      { _id: user_id },
+      { $set: { "perms.sendChat": false } },
+      { new: true }
+    );
+
+    if (!data) {
+      return res.json({ error: "Internal server error" });
+    }
+
+    console.log(data);
+
+    return res.json({ success: "You have muted user " + muteUser.user_id });
+  }
+  if (unmuteUser) {
+    const user_id = unmuteUser.user_id;
+
+    const data = await usersCollection.findOneAndUpdate(
+      { _id: user_id },
+      { $set: { "perms.sendChat": true } },
+      { new: true }
+    );
+
+    if (!data) {
+      return res.json({ error: "Internal server error" });
+    }
+
+    console.log(data);
+
+    return res.json({ success: "You have unmuted user " + user_id });
+  }
+  if (ban) {
+    const user_id = ban.user_id;
+
+    const data = await usersCollection.findOneAndUpdate(
+      { _id: user_id },
+      { $set: { "perms.banned": true } },
+      { new: true }
+    );
+
+    if (!data) {
+      return res.json({ error: "Internal server error" });
+    }
+
+    console.log(data);
+
+    return res.json({ success: "You have banned user " + user_id });
+  }
+  if (unban) {
+    const user_id = unban.user_id;
+
+    const data = await usersCollection.findOneAndUpdate(
+      { _id: user_id },
+      { $set: { "perms.banned": false } },
+      { new: true }
+    );
+
+    if (!data) {
+      return res.json({ error: "Internal server error" });
+    }
+
+    console.log(data);
+
+    return res.json({ success: "You have unbanned user " + user_id });
   }
 };
 
@@ -323,6 +472,115 @@ const fetchImages = async (req, res) => {
   });
 };
 
+const analytics = async (req, res) => {
+  const usersToday = req.body.usersToday;
+  const usersx = req.body.users;
+  const messagesx = req.body.messages;
+
+  const today = new Date();
+
+  if (usersToday) {
+    if (usersToday.role !== "admin") {
+      return res.status(401).json({ error: "Unauthorized access" });
+    }
+    console.log(usersToday);
+
+    const users = await usersCollection.find({}).sort({ created_at: -1 });
+
+    const data = [];
+    const dateToday = `${
+      months[today.getMonth()]
+    } ${today.getDate()} ${today.getFullYear()}`;
+    for (const user of users) {
+      const created_at = `${
+        months[user.created_at.getMonth()]
+      } ${user.created_at.getDate()} ${user.created_at.getFullYear()}`;
+      if (created_at == dateToday) {
+        data.push({
+          fullname: user.fullname.toTitleCase(),
+          created_at: user.created_at,
+        });
+      }
+    }
+    return res.json([{ name: "Today", users: data.length }]);
+  }
+
+  if (usersx) {
+    if (usersx.role !== "admin") {
+      return res.status(401).json({ error: "Unauthorized access" });
+    }
+
+    const users = await usersCollection.find({}).sort({ created_at: -1 });
+    const data = {};
+    for (let i = 0; i < 31; i++) {
+      data[i + 1] = [];
+    }
+    for (const user of users) {
+      if (
+        today.getFullYear() === user.created_at.getFullYear() &&
+        today.getMonth() === user.created_at.getMonth()
+      ) {
+        data[user.created_at.getDate()].push({
+          fullname: user.fullname,
+          date: `${
+            months[user.created_at.getMonth()]
+          } ${user.created_at.getDate()}`,
+        });
+      }
+    }
+
+    const analytic = [];
+    for (const key in data) {
+      if (data[key].length > 0) {
+        analytic.push({ name: data[key][0].date, users: data[key].length });
+      }
+    }
+    res.json(analytic);
+  }
+
+  if (messagesx) {
+    if (messagesx.role !== "admin") {
+      return res.status(401).json({ error: "Unauthorized access" });
+    }
+
+    const messages = await msgCollection.find({}).sort({ timestamp: -1 });
+    const data = {};
+    for (let i = 0; i < 31; i++) {
+      data[i + 1] = [];
+    }
+
+    for (const msg of messages) {
+      if (
+        today.getFullYear() === msg.timestamp.getFullYear() &&
+        today.getMonth() === msg.timestamp.getMonth()
+      ) {
+        data[msg.timestamp.getDate()].push({
+          fullname: msg.content,
+          date: `${
+            months[msg.timestamp.getMonth()]
+          } ${msg.timestamp.getDate()}`,
+        });
+      }
+    }
+
+    const analytic = [];
+    for (const key in data) {
+      if (data[key].length > 0) {
+        analytic.push({ name: data[key][0].date, messages: data[key].length });
+      }
+    }
+    res.json(analytic);
+  }
+};
+
+const checkLogin = (req, res, next) => {
+  if (!(req.session && req.session?.userdata?._id)) {
+    console.log("No session or user data found");
+    return res.status(401).json({ error: "Unauthorized access" });
+  }
+  next();
+};
+
 module.exports = {
   auth,
   rooms,
@@ -330,4 +588,6 @@ module.exports = {
   uploadFile,
   downloadFile,
   fetchImages,
+  analytics,
+  checkLogin,
 };
