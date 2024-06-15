@@ -4,8 +4,7 @@ const path = require("path");
 const http = require("http");
 const cors = require("cors");
 const { Server } = require("socket.io");
-const redis = require("redis");
-const RedisStore = require("connect-redis")(session); // Redis session store
+const fs = require("fs");
 
 const { generateInboxObject } = require("./config/functions");
 const {
@@ -31,8 +30,6 @@ const io = new Server(server, {
   },
 });
 
-const redisClient = redis.createClient(); // Create Redis client
-
 app.use([
   express.static(path.join(__dirname, "..", "/public")),
   express.json(),
@@ -41,14 +38,18 @@ app.use([
 app.use(cors());
 app.use(
   session({
-    store: new RedisStore({ client: redisClient }), // Use Redis for session store
-    secret: "your_session_secret_here",
+    secret: "74679e8244cf2b2869902f183ce3d864ba0c63e02585a21f4e10c5fc064eee05",
     resave: false,
     saveUninitialized: false,
   })
 );
 
-// RESTful API endpoints...
+server.listen(process.env.PORT || 3500, "0.0.0.0", () =>
+  console.log(`Connected to PORT ${process.env.PORT || 3500}`)
+);
+
+// REFSTFUL API
+
 app.post("/api/auth", auth);
 app.post("/api/rooms", rooms);
 app.post("/api/users", checkLogin, users);
@@ -64,11 +65,13 @@ app.post(
   upload.single("file"),
   uploadFile
 );
+
 app.post("/api/analytics", checkLogin, analytics);
 app.post("/api/download/:id/:filename", checkLogin, downloadFile);
 app.post("/api/fetch_images/:id", checkLogin, fetchImages);
 
 // SOCKET IO
+
 io.on("connection", (socket) => {
   console.log("User Connected:", socket.id);
 
@@ -124,7 +127,3 @@ io.on("connection", (socket) => {
     }
   });
 });
-
-server.listen(process.env.PORT || 3500, "0.0.0.0", () =>
-  console.log(`Connected to PORT ${process.env.PORT || 3500}`)
-);
