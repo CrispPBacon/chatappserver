@@ -254,7 +254,10 @@ const rooms = async (req, res) => {
 
 const users = async (req, res) => {
   const search = req.body.search;
-  const addFriend = req.body.addFriend;
+  const friendRequests = req.body.friendRequests;
+  const fetchFriends = req.body.fetchFriends;
+  const acceptRequest = req.body.acceptRequest;
+  const rejectRequest = req.body.rejectRequest;
   const getUsers = req.body.getUsers;
   const muteUser = req.body.muteUser;
   const unmuteUser = req.body.unmuteUser;
@@ -287,53 +290,114 @@ const users = async (req, res) => {
     // console.log(data);
     return res.json(data);
   }
-  if (addFriend) {
-    const { recipient_id, sender_id } = addFriend;
+
+  if (fetchFriends) {
+    const { user_id } = fetchFriends;
+    if (!user_id) {
+      return "Annonymous!";
+    }
+
+    const data = await friendCollection.find({
+      $and: [
+        { $or: [{ user_id1: user_id }, { user_id2: user_id }] },
+        { status: "FRIENDS" },
+      ],
+    });
+
+    const response = [];
+    for (const d of data) {
+      const person_id =
+        d.user_id1.toString() === user_id ? d.user_id2 : d.user_id1;
+      const person = await usersCollection.findOne({ _id: person_id });
+      response.push({
+        fullname: person.fullname.toTitleCase(),
+        _id: person._id,
+      });
+    }
+    return res.json(response);
+  }
+
+  if (friendRequests) {
+    const user_id = friendRequests.user_id;
+    if (!user_id) {
+      return res.json({ error: "Annonymous!" });
+    }
+
+    const data = await friendCollection.find({
+      $or: [{ user_id1: user_id }, { user_id2: user_id }],
+    });
+
+    const response = [];
+    for (const d of data) {
+      if (d.status === "PENDING" && d.user_id1.toString() !== user_id) {
+        const person_id =
+          d.user_id1.toString() === user_id ? d.user_id2 : d.user_id1;
+        const person = await usersCollection.findOne({ _id: person_id });
+        response.push({
+          fullname: person.fullname.toTitleCase(),
+          person_id: person_id,
+          timestamp: data.timestamp,
+        });
+      }
+    }
+    return res.json(response);
+  }
+
+  if (acceptRequest) {
+    const { user_id, person_id } = acceptRequest;
+
     const query = {
       $or: [
         {
           $and: [
-            { user_id1: new ObjectId(sender_id) },
-            { user_id2: new ObjectId(recipient_id) },
+            { user_id1: new ObjectId(user_id) },
+            { user_id2: new ObjectId(person_id) },
           ],
         },
         {
           $and: [
-            { user_id1: new ObjectId(recipient_id) },
-            { user_id2: new ObjectId(sender_id) },
+            { user_id1: new ObjectId(person_id) },
+            { user_id2: new ObjectId(user_id) },
           ],
         },
       ],
     };
-    const data = await friendCollection.findOne(query);
-    if (data) {
-      if (data.status == "ACCEPTED") {
-        return res.json({ error: "You are already friends with this person" });
-      }
-      if (data.status == "PENDING") {
-        return res.json({ error: "You have already sent a friend request" });
-      }
-      await friendCollection.updateOne(query, {
-        $set: { status: "PENDING" },
-      });
-      console.log("Updated friend status");
-      return res.json({ success: "You have sent a friend request!" });
-    }
 
-    const friendRequest = new friendCollection({
-      user_id1: new ObjectId(sender_id),
-      user_id2: new ObjectId(recipient_id),
-      status: "PENDING",
-      timestamp: new Date(),
+    if (!query) {
+      return res.json({ error: "No request found!" });
+    }
+    await friendCollection.updateOne(query, {
+      $set: { status: "FRIENDS" },
     });
+    return res.json({ success: "You are now friends with this person!" });
+  }
+  if (rejectRequest) {
+    const { user_id, person_id } = rejectRequest;
 
-    try {
-      friendRequest.save();
-      return res.json({ success: "You have sent a friend request!" });
-    } catch (error) {
-      console.log("Error while sending friend request", error);
-      return res.status(500).json({ error: "Internal server error." });
+    const query = {
+      $or: [
+        {
+          $and: [
+            { user_id1: new ObjectId(user_id) },
+            { user_id2: new ObjectId(person_id) },
+          ],
+        },
+        {
+          $and: [
+            { user_id1: new ObjectId(person_id) },
+            { user_id2: new ObjectId(user_id) },
+          ],
+        },
+      ],
+    };
+
+    if (!query) {
+      return res.json({ error: "No request found!" });
     }
+    await friendCollection.updateOne(query, {
+      $set: { status: "NONE" },
+    });
+    return res.json({ success: "You rejected this person's friend request" });
   }
 
   if (getUsers) {

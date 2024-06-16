@@ -21,7 +21,13 @@ const {
 } = require("./controllers");
 
 const { upload } = require("./config/multerConfig");
-const { usersCollection, msgCollection, ObjectId, db } = require("./config/db");
+const {
+  usersCollection,
+  msgCollection,
+  friendCollection,
+  ObjectId,
+  db,
+} = require("./config/db");
 
 const app = express();
 const server = http.createServer(app);
@@ -95,6 +101,62 @@ io.on("connection", (socket) => {
   socket.on("upload_image", async (members) => {
     console.log(members);
     io.to(members).emit("message_sent_response", "Image uploaded");
+  });
+
+  socket.on("send_friend_request", async (id, callback) => {
+    const user_id = id.user_id;
+    const person_id = id.person_id;
+
+    const query = {
+      $or: [
+        {
+          $and: [
+            { user_id1: new ObjectId(user_id) },
+            { user_id2: new ObjectId(person_id) },
+          ],
+        },
+        {
+          $and: [
+            { user_id1: new ObjectId(person_id) },
+            { user_id2: new ObjectId(user_id) },
+          ],
+        },
+      ],
+    };
+    const data = await friendCollection.findOne(query);
+    if (data) {
+      if (data.status == "ACCEPTED") {
+        return callback("You are already friends with this person");
+      }
+      if (data.status == "PENDING") {
+        return callback("Friend request is pending");
+      }
+      await friendCollection.updateOne(query, {
+        $set: { status: "PENDING" },
+      });
+      console.log("Updated friend status");
+      return callback("Friend request has been sent");
+    }
+
+    const friendRequest = new friendCollection({
+      user_id1: new ObjectId(user_id),
+      user_id2: new ObjectId(person_id),
+      status: "PENDING",
+      timestamp: new Date(),
+    });
+    try {
+      friendRequest.save();
+      const person = await usersCollection.findOne({ _id: person_id });
+
+      socket.to(person_id).emit("friend_request", {
+        fullname: person.fullname,
+        person_id: person._id,
+      });
+      return callback("You have sent a friend request!");
+    } catch (error) {
+      console.log("Error while sending friend request", error);
+      return callback("Internal server error.");
+    }
   });
 
   socket.on("send_message", async (data, callback) => {
